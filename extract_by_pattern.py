@@ -8,13 +8,13 @@ def extract_strict(str_headers, str_items):
     """
     names = []
     def replace(match):
-        names.append(match[1].strip())
+        names.append(match.group(1).strip())
         if match.end() == len(str_headers) or str_headers[match.end()] == '\n':
             # Last header of line/document. By allowing any number of
             # characters we permit str_item lines longer than str_headers.
             return '(.*)$'
         else:
-            return r'(.{{{0}}}|.{{,{0}}}$)'.format(len(match[1]))
+            return r'(.{{{0}}}|.{{,{0}}}$)'.format(len(match.group(1)))
     regex = re.compile(re.sub(r'(\S+[ \t]*)', replace, str_headers.strip()), re.MULTILINE)
 
     for str_item in str_items:
@@ -46,7 +46,7 @@ def extract_loose(str_headers, str_items):
         line_start, line_end = line_match.span()
         owners_by_line.append([None] * (line_end - line_start))
         for match in header_regex.finditer(str_headers, line_start, line_end):
-            name = match[1].strip()
+            name = match.group(1).strip()
             names.append(name)
             start, end = match.span()
             for i in range(start, end):
@@ -67,7 +67,7 @@ def extract_loose(str_headers, str_items):
                 # with spaces, which are left unclaimed.
                 counter[None] = 0
                 (name, count), = counter.most_common(1)
-                parts_by_name[name].append(match[1])
+                parts_by_name[name].append(match.group(1))
         yield {name: ' '.join(parts_by_name[name]) for name in names}
 
 extract = extract_loose
