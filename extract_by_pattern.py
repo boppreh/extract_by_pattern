@@ -2,16 +2,25 @@ import re
 from collections import Counter, defaultdict
 
 def extract_strict(str_headers, str_items):
+    """
+    Extracts data from each str_item by doing strict positional matching based
+    on the given `str_headers` structure.
+    """
     names = []
     def replace(match):
         names.append(match[1].strip())
         if match.end() == len(str_headers) or str_headers[match.end()] == '\n':
+            # Last header of line/document. By allowing any number of
+            # characters we permit str_item lines longer than str_headers.
             return '(.*)$'
         else:
             return r'(.{{{0}}}|.{{,{0}}}$)'.format(len(match[1]))
     regex = re.compile(re.sub(r'(\S+[ \t]*)', replace, str_headers.strip()), re.MULTILINE)
 
     for str_item in str_items:
+        # It's possible to use named groups and extract a ready dictionary,
+        # but it would forbid the use of certain special characters in the
+        # header name, such as '<'.
         groups = regex.match(str_item).groups()
         yield {name: value.strip() for name, value in zip(names, groups)}
 
@@ -19,8 +28,20 @@ line_regex = re.compile(r'^.*$', re.MULTILINE)
 header_regex = re.compile(r'(\S+[ \t]*)')
 chunk_regex = re.compile(r'(\S+)')
 def extract_loose(str_headers, str_items):
+    """
+    Extracts data from each str_item by doing loose chunk matching based
+    on the given `str_headers` structure.
+
+    Interprets `str_headers` as a matrix of characters, and assigns each
+    position to a field name. Then, for each `str_item`, split the chunks
+    and assign each chunk a name based on the most "overlapped" field name.
+    Then chunks with the same name are joined together to give the value of
+    that field.
+    """
     names = []
     owners_by_line = []
+    # By using finditer and explicit match start and end positions, we also
+    # avoid copying the strings all the time.
     for line_n, line_match in enumerate(line_regex.finditer(str_headers)):
         line_start, line_end = line_match.span()
         owners_by_line.append([None] * (line_end - line_start))
@@ -30,7 +51,9 @@ def extract_loose(str_headers, str_items):
             start, end = match.span()
             for i in range(start, end):
                 # TODO: allow multiple names per character,
-                # and include spaces to the left of the name too.
+                # and include spaces to the left of the name too, permitting
+                # center-aligned headers in the pattern.
+                # The problem is that this may introduce ambiguities.
                 owners_by_line[-1][i-line_start] = name
 
     for str_item in str_items:
@@ -40,6 +63,8 @@ def extract_loose(str_headers, str_items):
             for match in chunk_regex.finditer(str_item, *line_match.span()):
                 start, end = match.span()
                 counter = Counter(owners_by_line[line_n][start-line_start:end-line_start] or owners_by_line[line_n][-1])
+                # "None" fields may happen when the pattern has lines starting
+                # with spaces, which are left unclaimed.
                 counter[None] = 0
                 (name, count), = counter.most_common(1)
                 parts_by_name[name].append(match[1])
@@ -83,7 +108,7 @@ if __name__ == '__main__':
             self.t('a b', '111 2', {'a': '111', 'b': '2'})
         def test_15(self):
             # TODO: this should split 1-2. Fixing this would auto-detect
-            # header names that are centered.
+            # header names that are centered, but may create ambiguity.
             self.t('a  b', '1 2', {'a': '1 2', 'b': ''})
         def test_16(self):
             self.t('a b\nc', '1 2\n3', {'a': '1', 'b': '2', 'c': '3'})
